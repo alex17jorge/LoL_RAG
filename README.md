@@ -13,33 +13,25 @@ python -m pip install -r requirements.txt
 
 ## Usage
 
-Create text output. Riot's explanation for each change is included by default:
+Download and process a patch:
 
 ```powershell
 python lol_patch_scraper.py "https://www.leagueoflegends.com/en-us/news/game-updates/league-of-legends-patch-26-17-notes/"
 ```
 
-Write structured JSON for a RAG/data pipeline:
+Then create the chunks:
 
 ```powershell
-python lol_patch_scraper.py --json --output patch-26-17.json "https://www.leagueoflegends.com/en-us/news/game-updates/league-of-legends-patch-26-17-notes/"
+python chunk_patch_notes.py processed_data/scraped/patch-26-17.json
 ```
 
-Every run creates two files automatically:
+The pipeline uses three locations:
 
 ```text
-raw_data/patch-26-17.html          Original Riot webpage
-processed_data/patch-26-17.json   Parsed Summoner's Rift data
+raw_data/patch-26-17.html                  Original Riot webpage
+processed_data/scraped/patch-26-17.json   Parsed Summoner's Rift data
+processed_data/chunks/patch-26-17.jsonl   RAG chunks
 ```
-
-Without `--output`, the filename is generated from the patch URL. When
-`--output` is provided, it changes the filename but the file still goes inside
-`processed_data/`.
-
-Useful options:
-
-- `--no-context` leaves out Riot's explanation and keeps only concrete changes.
-- `--output result.txt` chooses the processed output filename.
 
 Example text shape:
 

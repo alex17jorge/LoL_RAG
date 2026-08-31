@@ -6,7 +6,7 @@ import argparse
 import sys
 
 RAW_DATA_FOLDER = Path('raw_data')
-PROCESSED_DATA_FOLDER = Path('processed_data')
+SCRAPED_DATA_FOLDER = Path('processed_data/scraped')
 
 OTHER_MODES = (
     "aram",
@@ -227,10 +227,10 @@ def save_json(data, url):
     """
         Save processed patch data as JSON
     """
-    PROCESSED_DATA_FOLDER.mkdir(exist_ok=True)
+    SCRAPED_DATA_FOLDER.mkdir(parents=True, exist_ok=True)
 
     filename = f"{get_patch_name(url)}.json"
-    path = PROCESSED_DATA_FOLDER / filename
+    path = SCRAPED_DATA_FOLDER / filename
 
     with path.open("w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)

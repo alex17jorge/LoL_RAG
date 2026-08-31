@@ -8,3 +8,9 @@ raw_data/*
 !raw_data/.gitkeep
 processed_data/*
 !processed_data/.gitkeep
+!processed_data/scraped/
+processed_data/scraped/*
+!processed_data/scraped/.gitkeep
+!processed_data/chunks/
+processed_data/chunks/*
+!processed_data/chunks/.gitkeep
