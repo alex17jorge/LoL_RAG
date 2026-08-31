@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+patch-*.json
+raw_data/*
+!raw_data/.gitkeep
+processed_data/*
+!processed_data/.gitkeep
