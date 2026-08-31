@@ -14,3 +14,7 @@ processed_data/scraped/*
 !processed_data/chunks/
 processed_data/chunks/*
 !processed_data/chunks/.gitkeep
+chroma_db*/
+.env
+frontend/node_modules/
+frontend/dist/

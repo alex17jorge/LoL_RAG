@@ -24,14 +24,19 @@ SKIPPED_SECTIONS = (
     "updated system requirements",
     "upcoming skins & chromas",
     "related articles",
+    "game systems",
+    "player behavior",
+    "ranked leaderboards",
+    "msi cup",
 )
 
-SUMMONERS_RIFT_KEYWORDS = (
-    "champion",
-    "item",
-    "rune",
-    "summoner spell",
-    "system",
+# Intro-only sections are kept only when their heading clearly describes
+# Summoner's Rift gameplay. Sections with actual entries are handled normally.
+SR_OVERVIEW_KEYWORDS = (
+    "summoner's rift",
+    "ranked",
+    "aegis",
+    "apex duo",
     "objective",
     "jungle",
     "turret",
@@ -39,10 +44,10 @@ SUMMONERS_RIFT_KEYWORDS = (
     "bounty",
     "bounties",
     "vision",
-    "map",
+    "last hit",
     "gameplay",
-    "summoner's rift",
 )
+
 
 
 def clean_text(element):
@@ -83,23 +88,26 @@ def save_raw_html(html, url):
     return path
 
 def is_summoners_rift_section(name):
-    """
-        return true if a section contains useful summoner's rift information
-    """
-    name = name.lower()
+    """Keep gameplay sections unless they belong to another mode."""
 
+    name = name.lower().strip()
+
+    # "Classic" is a separate mode when it is the section's complete name.
+    # Do not reject every use of the word because Riot may use it descriptively.
+    if name == "classic" or name.startswith("league of legends classic"):
+        return False
+
+    # Reject other game modes
     for mode in OTHER_MODES:
         if mode in name:
             return False
 
-    if name in SKIPPED_SECTIONS:
-        return False
+    # Reject sections that are not useful gameplay information
+    for skipped in SKIPPED_SECTIONS:
+        if skipped in name:
+            return False
 
-    for keyword in SUMMONERS_RIFT_KEYWORDS:
-        if keyword in name:
-            return True
-
-    return False
+    return True
 
 def parse_patch_notes(html, source_url=""):
     """
@@ -128,6 +136,7 @@ def parse_patch_notes(html, source_url=""):
     current_section = None
     current_entry = None
     current_change = None
+    current_content_block = None
 
     elements = container.find_all(["h2", "h3", "h4", "h5", "h6", "p", "li"])
 
@@ -143,6 +152,7 @@ def parse_patch_notes(html, source_url=""):
         if element.name == "h2":
             current_entry = None
             current_change = None
+            current_content_block = None
 
             if is_summoners_rift_section(text):
                 current_section = {
@@ -161,6 +171,15 @@ def parse_patch_notes(html, source_url=""):
         if current_section is None:
             continue
 
+        # Riot normally puts each champion, item, or system entry in its own
+        # content-border div. Reset entry state when a new card begins.
+        content_block = element.find_parent("div", class_="content-border")
+
+        if content_block is not None and content_block is not current_content_block:
+            current_content_block = content_block
+            current_entry = None
+            current_change = None
+
         if element.name == "h3":
             current_entry = {
                 "name": text,
@@ -177,12 +196,14 @@ def parse_patch_notes(html, source_url=""):
 
             if current_entry is None:
                 current_entry = {
-                    "name": current_section["name"],
+                    "name": text,
                     "context": [],
                     "changes": [],
                 }
 
                 current_section["entries"].append(current_entry)
+                current_change = None
+                continue
 
             current_change = {
                 "name": text,
@@ -220,6 +241,30 @@ def parse_patch_notes(html, source_url=""):
             current_entry["changes"].append(current_change)
 
         current_change["details"].append(text)
+
+    # Remove empty headings and fail loudly if Riot changes the page structure.
+    for section in patch["sections"]:
+        section["entries"] = [
+            entry
+            for entry in section["entries"]
+            if entry["context"] or entry["changes"]
+        ]
+
+    patch["sections"] = [
+        section
+        for section in patch["sections"]
+        if section["entries"]
+        or (
+            section["intro"]
+            and any(
+                keyword in section["name"].lower()
+                for keyword in SR_OVERVIEW_KEYWORDS
+            )
+        )
+    ]
+
+    if not patch["sections"]:
+        raise ValueError("No Summoner's Rift sections were found")
 
     return patch
 
