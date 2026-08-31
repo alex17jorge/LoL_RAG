@@ -11,6 +11,8 @@ from query_chroma import TOP_RESULTS, open_collection
 
 CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
 MAX_QUESTION_LENGTH = 1000
+MAX_HISTORY_MESSAGES = 6
+MAX_HISTORY_MESSAGE_LENGTH = 2000
 PATCH_PATTERN = re.compile(r"\b\d+\.\d+\b")
 
 ANSWER_INSTRUCTIONS = """
@@ -18,6 +20,8 @@ You are The Herald. Answer questions about League of Legends Summoner's Rift
 patch notes using only the supplied context.
 
 - Never invent a change. Say when the context does not contain the answer.
+- Use conversation history only to understand follow-up questions. Patch-note
+  facts must come from the supplied context.
 - Mention patch numbers when available.
 - For lists and summaries, inspect every supplied chunk.
 - Discuss only the champion, item, rune, system, or category being asked about.
@@ -57,6 +61,32 @@ def load_records(collection):
     """Load all documents and metadata from Chroma."""
 
     return collection.get(include=["documents", "metadatas"])
+
+
+def clean_history(history):
+    """Keep a small, safe list of previous user and assistant messages."""
+
+    if not isinstance(history, list):
+        return []
+
+    cleaned = []
+
+    for message in history[-MAX_HISTORY_MESSAGES:]:
+        if not isinstance(message, dict):
+            continue
+
+        role = message.get("role")
+        content = message.get("content")
+
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+
+        content = content.strip()[:MAX_HISTORY_MESSAGE_LENGTH]
+
+        if content:
+            cleaned.append({"role": role, "content": content})
+
+    return cleaned
 
 
 def latest_patch(records):
@@ -137,7 +167,7 @@ def semantic_search(collection, question):
     ]
 
 
-def retrieve_chunks(collection, question):
+def retrieve_chunks(collection, question, history=None):
     """Retrieve by exact entry, whole patch, or semantic similarity."""
 
     records = load_records(collection)
@@ -148,6 +178,21 @@ def retrieve_chunks(collection, question):
 
     entry = find_entry(records, question)
 
+    # If the new question is vague, look backward for its subject and patch.
+    for message in reversed(history or []):
+        previous_text = message["content"]
+
+        if patch is None:
+            patch = patch_in_question(previous_text)
+            if patch is None and asks_for_latest(previous_text):
+                patch = latest_patch(records)
+
+        if entry is None:
+            entry = find_entry(records, previous_text)
+
+        if patch and entry:
+            break
+
     # Exact metadata avoids collisions such as Locke versus Locket.
     if entry:
         return matching_chunks(records, patch=patch, entry=entry), patch
@@ -156,10 +201,13 @@ def retrieve_chunks(collection, question):
     if patch:
         return matching_chunks(records, patch=patch), patch
 
-    return semantic_search(collection, question), None
+    search_text = "\n".join(
+        [message["content"] for message in (history or [])] + [question]
+    )
+    return semantic_search(collection, search_text), None
 
 
-def answer_question(question, chunks, patch_used=None):
+def answer_question(question, chunks, patch_used=None, history=None):
     """Ask OpenAI to answer from the retrieved chunks."""
 
     context = "\n\n--- PATCH NOTE ---\n\n".join(
@@ -169,10 +217,14 @@ def answer_question(question, chunks, patch_used=None):
     if patch_used:
         question += f"\n\nRetrieved patch: {patch_used}."
 
+    current_message = f"Question:\n{question}\n\nPatch-note context:\n{context}"
+    input_messages = list(history or [])
+    input_messages.append({"role": "user", "content": current_message})
+
     response = OpenAI().responses.create(
         model=CHAT_MODEL,
         instructions=ANSWER_INSTRUCTIONS,
-        input=f"Question:\n{question}\n\nPatch-note context:\n{context}",
+        input=input_messages,
         store=False,
     )
 
@@ -248,6 +300,7 @@ def chat():
 
     data = request.get_json(silent=True) or {}
     question = str(data.get("question", "")).strip()
+    history = clean_history(data.get("history"))
 
     if not question:
         return jsonify({"error": "Please enter a question."}), 400
@@ -258,7 +311,11 @@ def chat():
         }), 400
 
     try:
-        chunks, patch_used = retrieve_chunks(open_collection(), question)
+        chunks, patch_used = retrieve_chunks(
+            open_collection(),
+            question,
+            history,
+        )
 
         if not chunks:
             answer = (
@@ -272,7 +329,7 @@ def chat():
                 "data_through_patch": patch_used,
             })
 
-        answer = answer_question(question, chunks, patch_used)
+        answer = answer_question(question, chunks, patch_used, history)
 
         return jsonify({
             "answer": answer,

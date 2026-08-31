@@ -46,6 +46,14 @@ function App() {
     const cleanQuestion = question.trim();
     if (!cleanQuestion || loading) return;
 
+    const history = messages
+      .slice(1)
+      .slice(-6)
+      .map((message) => ({
+        role: message.role,
+        content: message.text,
+      }));
+
     setMessages((current) => [
       ...current,
       { role: "user", text: cleanQuestion, sources: [] },
@@ -57,7 +65,7 @@ function App() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: cleanQuestion }),
+        body: JSON.stringify({ question: cleanQuestion, history }),
       });
 
       const data = await response.json();

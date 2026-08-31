@@ -83,7 +83,10 @@ npm run dev
 
 Open the local address printed by Vite, normally `http://localhost:5173`.
 Each question searches the existing Chroma database and then uses OpenAI to
-write an answer. It does not embed the chunks again.
+write an answer. The browser sends the six most recent messages so follow-up
+questions understand the current conversation. History clears when the page is
+refreshed and is not saved to a database. Asking questions does not embed the
+chunks again.
 
 PatchBot chooses retrieval based on the question:
 
